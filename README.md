@@ -12,77 +12,67 @@ browser automation).
 
 ---
 
-## Why it's hard
-
-The portal is a **JSF 2 + RichFaces 4** application behind a **ShieldSquare
-WAF** that actively fights non-browser clients:
-
-- Every request must carry the server-side **ViewState** token, or the server
-  answers `ViewExpiredException` (500). Pagination is inherently sequential.
-- The WAF serves **decoy responses** (HTTP 200 with `totalPages: 0`) and
-  evicts sessions after ~11 ZIP downloads. A dead session is detected by the
-  rotated `JSESSIONID` cookie.
-- The 302 redirect after login points to **http** on a blocked port — the
-  client must force https.
-- The resolutions travel as **triple-escaped JSON** embedded in `onclick`
-  attributes, with a different escaping format between full pages and AJAX
-  responses.
-
-The scraper replicates the exact browser flow (session → paginate → select all
-→ ZIP) request by request, and coexists with the WAF through exponential
-backoff, session rotation, decoy detection and SQLite resume.
-
 ## Stack
 
-| Technology | Role |
-|---|---|
-| **TypeScript** | Strict typing, compiled with `tsc` |
-| **Axios** + `axios-cookiejar-support` | HTTP requests with automatic cookie jar |
-| **Cheerio** | HTML/XML parsing |
-| **tough-cookie** | Cookie jar |
-| **adm-zip** | PDF extraction from each page's ZIP |
-| **better-sqlite3** | Resume state (which pages are done/failed) |
+| Technology                            | Role                                       |
+| ------------------------------------- | ------------------------------------------ |
+| **TypeScript**                        | Strict typing, compiled with`tsc`          |
+| **Axios** + `axios-cookiejar-support` | HTTP requests with automatic cookie jar    |
+| **Cheerio**                           | HTML/XML parsing                           |
+| **tough-cookie**                      | Cookie jar                                 |
+| **adm-zip**                           | PDF extraction from each page's ZIP        |
+| **better-sqlite3**                    | Resume state (which pages are done/failed) |
 
-## Installation
+## Prerequisites
+
+| Tool                         | Installation                              |
+| ---------------------------- | ----------------------------------------- |
+| Node 24+                     | [nodejs.org](https://nodejs.org) (or nvm) |
+| pnpm                         | `npm install -g pnpm`                     |
+| Docker (container mode only) | [docker.com](https://docker.com)          |
+
+## Quick Start
+
+### Docker
+
+```bash
+docker compose build
+docker compose run --rm scraper
+```
+
+### Local (Node)
 
 ```bash
 git clone https://github.com/RLFreddy/jurisprudencia-scraper
 cd jurisprudencia-scraper
 cp .env.example .env
 pnpm install
-```
-
-Requires **Node 24+**.
-
-## Usage
-
-```bash
 pnpm dev
 ```
 
-| Flag (.env or env) | Default | What it does |
-|---|---|---|
-| `PAGES` | `4` | `0` = all pages; `N` = N pages from the resume point (`.env.example` ships 4) |
-| `DOWNLOAD_PDFS` | `1` | `1` = metadata + ZIP + PDFs; `0` = `metadata.csv` only (fast and light on the WAF) |
-| `RETRIES` | `4` | Retries per request (exponential backoff 1s, 2s, 4s, 8s) |
-| `ZIP_RETRIES` | `2` | Retries of the ZIP POST |
-| `REQUEST_DELAY_MS` | `2500` | Pause between pages (anti rate-limit) |
-| `RATE_LIMIT_COOLDOWN_MS` | `60000` | Pause before renewing the session (hot WAF) |
-| `MAX_COOLDOWN_CYCLES` | `3` | Max cooldown cycles before giving up |
-| `MAX_ATTEMPTS` | `5` | Attempts per page before abandoning it |
-| `ZIP_FAILURES_BEFORE_RENEW` | `2` | Consecutive failures that trigger session renewal |
-| `PAGES_PER_SESSION` | `8` | Proactive session rotation (the WAF evicts ~11 ZIPs) |
-| `BASE_DIR` | `data` | Base for ALL storage: `scraper.db`, `files/`, `errors/` under `data/` on the host; `/app/data` in Docker |
-
-### Examples
-
 ```bash
-pnpm dev                               # 4 pages with PDFs (per .env.example)
 PAGES=0 pnpm dev                       # all pages (~21,000) with PDFs
-DOWNLOAD_PDFS=0 pnpm dev               # metadata only for all pages
-DOWNLOAD_PDFS=0 PAGES=100 pnpm dev     # metadata for 100 pages (fast)
-PAGES=5 pnpm dev                       # 5 pages with PDFs
+DOWNLOAD_PDFS=0 PAGES=10 pnpm dev     # metadata for 10 pages (fast)
 ```
+
+## Configuration
+
+All options come from the environment — inline (`PAGES=0 pnpm dev`) or via
+`.env` (see `.env.example`):
+
+| Flag (.env or env)          | Default | What it does                                                                                            |
+| --------------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `PAGES`                     | `4`     | `0` = all pages; `N` = N pages from the resume point (`.env.example` ships 4)                           |
+| `DOWNLOAD_PDFS`             | `1`     | `1` = metadata + ZIP + PDFs; `0` = `metadata.csv` only (fast and light on the portal)                   |
+| `RETRIES`                   | `4`     | Retries per request (exponential backoff 1s, 2s, 4s, 8s)                                                |
+| `ZIP_RETRIES`               | `2`     | Retries of the ZIP POST                                                                                 |
+| `REQUEST_DELAY_MS`          | `2500`  | Pause between pages (anti rate-limit)                                                                   |
+| `RATE_LIMIT_COOLDOWN_MS`    | `60000` | Pause before renewing the session (rate-limited)                                                        |
+| `MAX_COOLDOWN_CYCLES`       | `3`     | Max cooldown cycles before giving up                                                                    |
+| `MAX_ATTEMPTS`              | `5`     | Attempts per page before abandoning it                                                                  |
+| `ZIP_FAILURES_BEFORE_RENEW` | `2`     | Consecutive failures that trigger session renewal                                                       |
+| `PAGES_PER_SESSION`         | `8`     | Proactive session rotation (sessions die after ~11 ZIPs)                                                |
+| `BASE_DIR`                  | `data`  | Base for ALL storage:`scraper.db`, `files/`, `errors/` under `data/` on the host; `/app/data` in Docker |
 
 ## Docker
 
@@ -100,24 +90,32 @@ data_docker/           ← everything the scraper writes lives here
 ### Installation
 
 ```bash
-docker build -t scraper-challenge-scraper .
+docker build -t jurisprudencia-scraper .
 # or
 docker compose build
 ```
 
-### Usage
+### Run
 
 ```bash
 docker compose run --rm scraper                     # uses your .env
-docker compose run --rm -e DOWNLOAD_PDFS=0 -e PAGES=100 scraper
+docker compose run --rm -e DOWNLOAD_PDFS=0 -e PAGES=10 scraper
 ```
 
 Without compose:
 
 ```bash
 docker run --rm -v "$PWD/data_docker:/app/data" \
-  -e DOWNLOAD_PDFS=0 -e PAGES=100 \
-  scraper-challenge-scraper:latest
+  -e DOWNLOAD_PDFS=0 -e PAGES=10 \
+  jurisprudencia-scraper:latest
+```
+
+The container fixes the folder's ownership on startup. If you ever hit
+`unable to open database file`, the bind folder was auto-created as root —
+just delete and recreate it:
+
+```bash
+rm -rf data_docker && mkdir data_docker
 ```
 
 ## Output
@@ -178,18 +176,17 @@ src/
     └── run.ts            # orchestration: sessions, resume, rotation, cooldown
 ```
 
-## Resilience design (the WAF is the bottleneck)
+## Resilience design
 
-The portal is protected by a WAF (ShieldSquare) that evicts sessions and
-returns *decoy* responses (HTTP 200 with `totalPages: 0`). The scraper
-coexists with it:
+The portal evicts sessions and returns _decoy_ responses (HTTP 200 with
+`totalPages: 0`). The scraper coexists with that:
 
 - **Exponential backoff** on every request (`RETRY_BASE_DELAY_MS * 2^(attempt-1)`,
   honors `Retry-After` if the site ever responds 429 with that header).
 - **Session death signal**: 500 with `Set-Cookie: JSESSIONID` → renew right
   away (with cooldown), without retrying on a dead session.
-- **Proactive rotation**: renew every `PAGES_PER_SESSION` pages before the WAF
-  evicts (~11 ZIPs per session observed).
+- **Proactive rotation**: renew every `PAGES_PER_SESSION` pages before the
+  session dies (~11 ZIPs per session observed).
 - **Decoy detection**: session with `totalPages: 0` → cooldown + retry up to
   `MAX_COOLDOWN_CYCLES`.
 - **Resume**: every page is marked done/failed in SQLite. An interruption
@@ -200,7 +197,7 @@ coexists with it:
 
 Pagination is **inherently sequential** (JSF ViewState): page N+1 needs the
 token from page N, and parallelizing would only multiply the pressure on the
-WAF. That's why the scraper is single-threaded with a steady rhythm.
+portal. That's why the scraper is single-threaded with a steady rhythm.
 
 ## How it works
 
@@ -227,16 +224,16 @@ without PDFs the scraper makes ~3× fewer requests.
 
 ## Features
 
-| Feature | Status |
-|---|---|
-| Plain HTTP requests only (no browser automation) | ✅ |
-| Crawl the full pagination (~21,000 pages, total detected live) | ✅ |
-| Structured metadata extraction (CSV, 11 columns) | ✅ |
-| PDF download (individual, real filenames) | ✅ |
-| Backoff on rate-limit/429 | ✅ |
-| Continue across persistent failures (resume + skip) | ✅ |
-| Failure tracking for manual retry | ✅ (events.jsonl + dumps) |
-| Documented (this README + `.env.example`) | ✅ |
+| Feature                                                        | Status                    |
+| -------------------------------------------------------------- | ------------------------- |
+| Plain HTTP requests only (no browser automation)               | ✅                        |
+| Crawl the full pagination (~21,000 pages, total detected live) | ✅                        |
+| Structured metadata extraction (CSV, 11 columns)               | ✅                        |
+| PDF download (individual, real filenames)                      | ✅                        |
+| Backoff on rate-limit/429                                      | ✅                        |
+| Continue across persistent failures (resume + skip)            | ✅                        |
+| Failure tracking for manual retry                              | ✅ (events.jsonl + dumps) |
+| Documented (this README +`.env.example`)                       | ✅                        |
 
 ## What I'd change
 
