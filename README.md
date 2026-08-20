@@ -10,6 +10,8 @@ detected live and varies), extracts structured resolution metadata and
 downloads the PDFs — **with plain HTTP requests only** (axios + cheerio, zero
 browser automation).
 
+![Demo](assets/demo.gif)
+
 ---
 
 ## Stack
