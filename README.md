@@ -46,8 +46,8 @@ backoff, session rotation, decoy detection and SQLite resume.
 ## Installation
 
 ```bash
-git clone <repo-url>
-cd <repo>
+git clone https://github.com/RLFreddy/jurisprudencia-scraper
+cd jurisprudencia-scraper
 cp .env.example .env
 pnpm install
 ```
