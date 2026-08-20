@@ -1,0 +1,28 @@
+{
+  "name": "jurisprudencia-scraper",
+  "version": "1.0.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "clean": "rm -rf dist",
+    "test": "tsx --test src/*.test.ts"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.0.0",
+    "tsx": "4.22.4",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.0",
+    "axios": "^1.18.1",
+    "axios-cookiejar-support": "^7.0.0",
+    "better-sqlite3": "^13.0.3",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2",
+    "tough-cookie": "^6.0.1"
+  }
+}
