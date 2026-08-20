@@ -1,0 +1,10 @@
+services:
+  scraper:
+    build: .
+    env_file: .env
+    environment:
+      # Single root for ALL output (PDFs, errors, SQLite state): everything
+      # lands inside the bind mount ./output_docker on the host.
+      BASE_DIR: /app/data
+    volumes:
+      - ./data_docker:/app/data

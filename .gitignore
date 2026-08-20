@@ -1,7 +1,7 @@
 node_modules/
 dist/
-files/
-errors/
+data/
+data_docker/
 .env
 *.db
 *.db-wal
