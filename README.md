@@ -2,7 +2,7 @@
 
 [![by](https://img.shields.io/badge/by-RLFreddy-gray?logo=github)](https://github.com/RLFreddy)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/Node-18%2B-green?logo=node.js)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/Node-24%2B-green?logo=node.js)](https://nodejs.org)
 
 WAF-resilient scraper for Peru's judiciary jurisprudence portal
 (`jurisprudencia.pj.gob.pe`). Crawls all result pages (~21,000 — the total is
@@ -52,7 +52,7 @@ cp .env.example .env
 pnpm install
 ```
 
-Requires **Node 18+**.
+Requires **Node 24+**.
 
 ## Usage
 
@@ -62,7 +62,7 @@ pnpm dev
 
 | Flag (.env or env) | Default | What it does |
 |---|---|---|
-| `PAGES` | `0` | `0` = all pages; `N` = N pages from the resume point |
+| `PAGES` | `4` | `0` = all pages; `N` = N pages from the resume point (`.env.example` ships 4) |
 | `DOWNLOAD_PDFS` | `1` | `1` = metadata + ZIP + PDFs; `0` = `metadata.csv` only (fast and light on the WAF) |
 | `RETRIES` | `4` | Retries per request (exponential backoff 1s, 2s, 4s, 8s) |
 | `ZIP_RETRIES` | `2` | Retries of the ZIP POST |
@@ -72,33 +72,70 @@ pnpm dev
 | `MAX_ATTEMPTS` | `5` | Attempts per page before abandoning it |
 | `ZIP_FAILURES_BEFORE_RENEW` | `2` | Consecutive failures that trigger session renewal |
 | `PAGES_PER_SESSION` | `8` | Proactive session rotation (the WAF evicts ~11 ZIPs) |
-| `DB_PATH` | `scraper.db` | Resume state (SQLite) |
-| `OUTPUT_DIR` | `files` | Output: `files/page-N/` |
-| `ERROR_LOG_PATH` / `ERROR_DIR` | `errors/events.jsonl` / `errors/dumps` | JSON events (append) and per-day dumps of failed responses |
+| `BASE_DIR` | `data` | Base for ALL storage: `scraper.db`, `files/`, `errors/` under `data/` on the host; `/app/data` in Docker |
 
 ### Examples
 
 ```bash
-pnpm dev                               # all pages (~21,000) with PDFs
+pnpm dev                               # 4 pages with PDFs (per .env.example)
+PAGES=0 pnpm dev                       # all pages (~21,000) with PDFs
 DOWNLOAD_PDFS=0 pnpm dev               # metadata only for all pages
 DOWNLOAD_PDFS=0 PAGES=100 pnpm dev     # metadata for 100 pages (fast)
 PAGES=5 pnpm dev                       # 5 pages with PDFs
 ```
 
+## Docker
+
+Multi-stage image based on `node:24.10.0-slim` (glibc — `better-sqlite3` v13
+uses the N-API prebuilt binary for Node 24, no compilation needed). All output
+is bind-mounted to a single host folder:
+
+```
+data_docker/           ← everything the scraper writes lives here
+├── scraper.db         ← resume state (SQLite)
+├── files/             ← page-N/metadata.csv + PDFs
+└── errors/            ← events.jsonl + dumps by day
+```
+
+### Installation
+
+```bash
+docker build -t scraper-challenge-scraper .
+# or
+docker compose build
+```
+
+### Usage
+
+```bash
+docker compose run --rm scraper                     # uses your .env
+docker compose run --rm -e DOWNLOAD_PDFS=0 -e PAGES=100 scraper
+```
+
+Without compose:
+
+```bash
+docker run --rm -v "$PWD/data_docker:/app/data" \
+  -e DOWNLOAD_PDFS=0 -e PAGES=100 \
+  scraper-challenge-scraper:latest
+```
+
 ## Output
 
 ```
-files/
-├── page-1/
-│   ├── metadata.csv               ← 10 resolutions (recurso, expediente,
-│   │                                 pretension, tipo, fecha, sala, normaDI,
-│   │                                 sumilla, palabrasClave, uuid, urlDescarga)
-│   ├── Resolucion_12_20260814102923000360794.pdf   ← loose PDFs (if
-│   ├── Resolucion_3_20260814180456000669553.pdf      DOWNLOAD_PDFS=1)
-│   └── ... (10 PDFs)
-├── page-2/
-│   └── ...
-└── page-N/
+data/
+├── scraper.db                    ← resume state (SQLite)
+└── files/
+    ├── page-1/
+    │   ├── metadata.csv               ← 10 resolutions (recurso, expediente,
+    │   │                                 pretension, tipo, fecha, sala, normaDI,
+    │   │                                 sumilla, palabrasClave, uuid, urlDescarga)
+    │   ├── Resolucion_12_20260814102923000360794.pdf   ← loose PDFs (if
+    │   ├── Resolucion_3_20260814180456000669553.pdf      DOWNLOAD_PDFS=1)
+    │   └── ... (10 PDFs)
+    ├── page-2/
+    │   └── ...
+    └── page-N/
 ```
 
 Each ZIP carries 10 PDFs with descriptive names. Per-page flow:
@@ -108,7 +145,7 @@ Each ZIP carries 10 PDFs with descriptive names. Per-page flow:
 Failures are tracked separately, organized by day:
 
 ```
-errors/
+data/errors/
 ├── events.jsonl              ← one JSON event per line (retries, decoys, failures)
 └── dumps/
     └── 2026-08-19/           ← raw body of each failed response
@@ -120,7 +157,7 @@ errors/
 
 ```
 src/
-├── index.ts              # bootstrap: createClient() → run()
+├── main.ts               # bootstrap: createClient() → run()
 ├── config.ts             # all configuration (env)
 ├── types.ts              # domain types + StepFailure (typed error)
 ├── state.ts              # SQLite: page done/failed/attempts, resume
@@ -128,7 +165,7 @@ src/
 │   ├── http.ts           # axios client + cookie jar, withRetry with backoff
 │   │                     #   and Retry-After support, structured errorInfo
 │   ├── log.ts            # console log (info/debug)
-│   ├── errorLog.ts       # errors/events.jsonl (JSON lines) + dumps in errors/dumps/
+│   ├── errorLog.ts       # data/errors/events.jsonl (JSON lines) + dumps in data/errors/dumps/
 │   └── output.ts         # the only filesystem layer: writeMetadata, extractPdfs
 ├── buildForms/
 │   ├── common.ts         # collectFormFields($, form, {skip, force}) — DRY
@@ -158,20 +195,8 @@ coexists with it:
 - **Resume**: every page is marked done/failed in SQLite. An interruption
   resumes exactly where it left off; abandoned pages (5 attempts) are skipped.
 - **Clean log**: one line per page (`[N/total] ✓ 10 res · 2.56 MB`); all
-  failure detail goes to `errors/events.jsonl` (JSON, append) + a body dump per
-  day in `errors/dumps/<day>/<time>-<step>.<ext>`.
-
-```text
-$ pnpm dev
-Total pages: 21432
-
-[22/21432] ✓ 10 res · 2.56 MB
-[23/21432] ✓ 10 res · 2.50 MB
-[24/21432] ✗ zip p24 → ✓ 10 res · 2.48 MB
-[25/21432] ✓ 10 res · 2.61 MB
-...
-Done: 21 pages this run — 42 done, 0 failed (see errors/events.jsonl)
-```
+  failure detail goes to `data/errors/events.jsonl` (JSON, append) + a body dump per
+  day in `data/errors/dumps/<day>/<time>-<step>.<ext>`.
 
 Pagination is **inherently sequential** (JSF ViewState): page N+1 needs the
 token from page N, and parallelizing would only multiply the pressure on the

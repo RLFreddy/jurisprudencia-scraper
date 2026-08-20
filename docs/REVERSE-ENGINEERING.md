@@ -99,7 +99,7 @@ formBuscador:spinner2=N-1
   the table HTML with the 10 resolutions → the embedded JSON is extracted from
   each row → `metadata.csv`. The response's ViewState is kept if it rotates.
 - **Suspicious-page signal**: 0 extracted resolutions = WAF response or error
-  → treated as a failure (body dumped to `errors/dumps/`).
+  → treated as a failure (body dumped to `data/errors/dumps/`).
 
 ### 5. AJAX POST selectAll — marks the 10 rows (1 request)
 

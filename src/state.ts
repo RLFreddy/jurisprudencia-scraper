@@ -1,8 +1,14 @@
 // state — persistent crawl state (SQLite, resume): every page with its
 // status (done/failed/pending) and attempt counter.
 
+import fs from "node:fs";
+import path from "node:path";
 import Sqlite from "better-sqlite3";
 import { DB_PATH, MAX_ATTEMPTS } from "./config";
+
+// Better-sqlite3 refuses to open a DB whose directory doesn't exist —
+// create it first (e.g. data/ on the host, /app/data is pre-created in Docker).
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new Sqlite(DB_PATH);
 db.exec("PRAGMA journal_mode = WAL");
